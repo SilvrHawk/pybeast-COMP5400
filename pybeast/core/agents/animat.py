@@ -1,4 +1,4 @@
-'''
+"""
 /**
  * Interface of the Animat class and associated constants.
  * #Inherit this call to create an Animat with a unique control
@@ -12,16 +12,24 @@
  * \see FFNAnimat
  * \see DNNAnimat
  */
-'''
+"""
+
 # Built-in
 from abc import abstractmethod
 import time
 from typing import Optional, Dict
 import copy
+
 # Third-party
 import numpy as np
 from OpenGL.GL import *
-from OpenGL.GLU import gluNewQuadric, gluQuadricDrawStyle, gluDisk, gluDeleteQuadric, GLU_FILL
+from OpenGL.GLU import (
+    gluNewQuadric,
+    gluQuadricDrawStyle,
+    gluDisk,
+    gluDeleteQuadric,
+    GLU_FILL,
+)
 
 # Local
 from pybeast.core.world.drawable import Drawable
@@ -30,18 +38,20 @@ from pybeast.core.utils.colours import random_colour
 from pybeast.core.utils.vector2D import Vector2D
 from pybeast.core.sensors.sensor import Sensor
 from pybeast.core.world.trail import Trail
+from pybeast.core.world.signal import Signal
 
 
-TWO_PI = 2*np.pi
+TWO_PI = 2 * np.pi
 # Constants
-ANIMAT_RADIUS = 5.0		# Animat's default radius.
-ANIMAT_MAX_SPEED = 100.0	# Animat's default maximum speed.
-ANIMAT_MIN_SPEED = -50.0	# Animat's default minimum speed.
+ANIMAT_RADIUS = 5.0  # Animat's default radius.
+ANIMAT_MAX_SPEED = 100.0  # Animat's default maximum speed.
+ANIMAT_MIN_SPEED = -50.0  # Animat's default minimum speed.
 ANIMAT_MAX_ROTATE = 2 * np.pi  # The default max rotation/frame.
-ANIMAT_DRAG = 50.0			# An arbitrary friction value.
-ANIMAT_ACCEL = 5000.0		# An arbitrary acceleration value.
-ANIMAT_TIMESTEP = 0.05		# The default time step.
-ANIMAT_PARTS = 4			# The number of different colours.
+ANIMAT_DRAG = 50.0  # An arbitrary friction value.
+ANIMAT_ACCEL = 5000.0  # An arbitrary acceleration value.
+ANIMAT_TIMESTEP = 0.05  # The default time step.
+ANIMAT_PARTS = 4  # The number of different colours.
+
 
 # Enumeration type for the different coloured parts of the Animat.
 class AnimatPartType:
@@ -50,7 +60,12 @@ class AnimatPartType:
     ANIMAT_ARROW = 2
     ANIMAT_WHEEL = 3
 
-ANIMAT_COLOURS = np.zeros((4,4))
+
+ANIMAT_DEFAULT_SIGNAL_STRENGTH = 50.0  # Default range of signal
+ANIMAT_MAX_SIGNAL_STRENGTH = 200.0  # Maximum possible signal range
+ANIMAT_SIGNAL_COLOR = [0.2, 0.8, 1.0, 0.3]  # Cyan with transparency
+
+ANIMAT_COLOURS = np.zeros((4, 4))
 ANIMAT_COLOURS[AnimatPartType.ANIMAT_CENTRE][:] = 1.0
 ANIMAT_COLOURS[AnimatPartType.ANIMAT_ARROW][:3] = 0.0
 ANIMAT_COLOURS[AnimatPartType.ANIMAT_ARROW][3] = 1.0
@@ -62,24 +77,25 @@ class Animat(WorldObject):
 
     numAnimats = 0.0
 
-    def __init__(self,
-         startLocation: Optional[Vector2D] = None,
-         startOrientation: Optional[float] = None,
-         startVelocity: Optional[Vector2D] = None,
-         minSpeed: float = ANIMAT_MIN_SPEED,
-         maxSpeed: float = ANIMAT_MAX_SPEED,
-         maxTurn: float = ANIMAT_MAX_ROTATE,
-         timeStep: float = ANIMAT_TIMESTEP,
-         solid: bool = False,
-         randomColour: bool = True,
-         interactionRange: float = np.inf,
-         controls: Optional[Dict[str, float]] = None):
+    def __init__(
+        self,
+        startLocation: Optional[Vector2D] = None,
+        startOrientation: Optional[float] = None,
+        startVelocity: Optional[Vector2D] = None,
+        minSpeed: float = ANIMAT_MIN_SPEED,
+        maxSpeed: float = ANIMAT_MAX_SPEED,
+        maxTurn: float = ANIMAT_MAX_ROTATE,
+        timeStep: float = ANIMAT_TIMESTEP,
+        solid: bool = False,
+        randomColour: bool = True,
+        interactionRange: float = np.inf,
+        controls: Optional[Dict[str, float]] = None,
+        signalStrength: float = 0.0,  # Default to no signal range
+    ):
 
         super().__init__(
-            startLocation,
-            startOrientation,
-            radius=ANIMAT_RADIUS,
-            solid=solid)
+            startLocation, startOrientation, radius=ANIMAT_RADIUS, solid=solid
+        )
 
         self.startVelocity = startVelocity
         self.minSpeed = minSpeed
@@ -98,13 +114,25 @@ class Animat(WorldObject):
         if controls is None:
             self.controls = {"left": 0.0, "right": 0.0}
         self.trail = Trail()
+        # Signal indicator
+        self.signal = Signal()
 
         if startVelocity is None:
-            self.resetRandom['startVelocity'] = True
+            self.resetRandom["startVelocity"] = True
         else:
-            self.resetRandom['startVelocity'] = False
+            self.resetRandom["startVelocity"] = False
 
         Animat.numAnimats += 1
+
+        # Set the default signal values
+        self.signal_strength = signalStrength
+        self.signal_value = 0.0
+        self.is_transmitting = False
+        self.received_signals = {}
+
+        # Set signal display radius to match signal strength
+        # TODO: display radius could probably be the same as signal strength but keep it this way for now
+        self.signal.display_radius = self.signal_strength
 
     def __del__(self):
 
@@ -119,10 +147,20 @@ class Animat(WorldObject):
     def __repr__(self):
 
         if not self.isInit:
-            return self._repr(isInit = self.isInit, startLocation = self.startLocation, startOrientation = self.startOrientation)
+            return self._repr(
+                isInit=self.isInit,
+                startLocation=self.startLocation,
+                startOrientation=self.startOrientation,
+            )
         else:
-            return self._repr(isInit = self.isInit, location=self.location, orientation=self.orientation,
-                velocity=self.radius, colour=self.colour, edges=self.edges)
+            return self._repr(
+                isInit=self.isInit,
+                location=self.location,
+                orientation=self.orientation,
+                velocity=self.radius,
+                colour=self.colour,
+                edges=self.edges,
+            )
 
     def Init(self):
 
@@ -143,6 +181,88 @@ class Animat(WorldObject):
         self.isInit = True
 
         return
+
+    # Later will move functions to their correct place in mutators/getters
+    def SetSignalStrength(self, strength: float):
+        """
+        Set the strength/range of the transmitter signal
+        """
+        self.signal_strength = min(strength, ANIMAT_MAX_SIGNAL_STRENGTH)
+        # Update the display radius to match the signal strength
+        # TODO: Again, we could probably use only one variable for both but keep it this way for now
+        self.signal.display_radius = self.signal_strength
+        # Also update the transmission strength
+        self.signal.strength = self.signal_strength
+
+    def SetSignalValue(self, value: float):
+        """
+        Set the value being transmitted
+        """
+        self.signal_value = value
+
+    def StartTransmitting(self):
+        """
+        Begin transmitting the signal
+        """
+        self.is_transmitting = True
+        # Activate the signal visualization
+        self.signal.Activate(
+            self.GetLocation(), self.signal_strength, self.signal_value
+        )
+
+    def StopTransmitting(self):
+        """
+        Stop transmitting the signal
+        """
+        self.is_transmitting = False
+        # Deactivate the signal visualization
+        self.signal.Deactivate()
+
+    def IsTransmitting(self) -> bool:
+        """
+        Check if currently transmitting
+        """
+        return self.is_transmitting
+
+    def GetSignalStrength(self) -> float:
+        """
+        Get the current signal strength
+        """
+        return self.signal_strength
+
+    def GetSignalValue(self) -> float:
+        """
+        Get the transmitted signal value
+        """
+        return self.signal_value
+
+    def ReceiveSignal(
+        self,
+        sender_id,
+        value: float,
+        strength: float,
+        distance: float,
+        angle: float = None,
+    ):
+        """
+        Store a received signal with its details
+        """
+        # Signal strength decreases with distance (might be useful later)
+        attenuated_strength = strength * (1.0 - min(1.0, distance / strength))
+        if attenuated_strength > 0:
+            self.received_signals[sender_id] = {
+                "value": value,
+                "strength": attenuated_strength,
+                "distance": distance,
+                "timestamp": time.time(),
+                "angle": angle,  # Store the angle to sender
+            }
+
+    def GetReceivedSignals(self) -> Dict:
+        """
+        Get all received signals
+        """
+        return self.received_signals
 
     def InitColour(self):
 
@@ -196,8 +316,9 @@ class Animat(WorldObject):
         self.OffsetOrientation(self.maxTurn * (controlLeft - controlRight) * dt)
 
         self.velocity += Vector2D(
-            l=(self.maxSpeed - self.minSpeed) * 0.5 * (controlLeft + controlRight) + self.minSpeed,
-            a=self.orientation
+            l=(self.maxSpeed - self.minSpeed) * 0.5 * (controlLeft + controlRight)
+            + self.minSpeed,
+            a=self.orientation,
         )
 
         # Include "drag force"
@@ -231,10 +352,17 @@ class Animat(WorldObject):
         self.distanceTravelled += self.velocity.GetLength() * dt
 
         for control in self.controls.values():
-            self.powerUsed += ((self.maxSpeed - self.minSpeed) * abs(control) + self.minSpeed) * dt
+            self.powerUsed += (
+                (self.maxSpeed - self.minSpeed) * abs(control) + self.minSpeed
+            ) * dt
 
         self.trail.Append(copy.deepcopy(self.GetLocation()))
         self.trail.Update()
+
+        # Always update signal position, even when not transmitting
+        self.signal.Update(copy.deepcopy(self.GetLocation()))
+        # Clear received signals after processing (to avoid feedback loops)
+        self.received_signals.clear()
 
         super().Update()
 
@@ -247,7 +375,7 @@ class Animat(WorldObject):
         self.distanceTravelled = 0
         self.powerUsed = 0
 
-        if self.resetRandom['startVelocity']:
+        if self.resetRandom["startVelocity"]:
             self.startVelocity = Vector2D(l=1.0, a=self.orientation)
 
         self.SetVelocity(self.startVelocity)
@@ -278,8 +406,50 @@ class Animat(WorldObject):
                 # Sensors go first because we don't want things bouncing away and not be sensed.
                 self.SensorInteract(other)
 
+                # Handle signal transmission if either animat is transmitting
+                distance = (self.location - other.location).GetLength()
+
+                # If this animat is transmitting, other animat can receive
+                if self.is_transmitting and distance <= self.signal_strength:
+                    # Calculate angle from other to self
+                    vec_to_self = self.location - other.location
+                    angle_to_self = vec_to_self.GetAngle() - other.GetOrientation()
+                    # Normalize to range [-π, π]
+                    while angle_to_self > np.pi:
+                        angle_to_self -= TWO_PI
+                    while angle_to_self < -np.pi:
+                        angle_to_self += TWO_PI
+
+                    other.ReceiveSignal(
+                        id(self),
+                        self.signal_value,
+                        self.signal_strength,
+                        distance,
+                        angle_to_self,
+                    )
+
+                # TODO: This might be a bit redundant, I will test if we can do with only one if statement later
+                # If other animat is transmitting, this animat can receive
+                if other.IsTransmitting() and distance <= other.GetSignalStrength():
+                    # Calculate angle from self to other
+                    vec_to_other = other.location - self.location
+                    angle_to_other = vec_to_other.GetAngle() - self.GetOrientation()
+                    # Normalize to range [-π, π]
+                    while angle_to_other > np.pi:
+                        angle_to_other -= 2 * np.pi
+                    while angle_to_other < -np.pi:
+                        angle_to_other += 2 * np.pi
+
+                    self.ReceiveSignal(
+                        id(other),
+                        other.GetSignalValue(),
+                        other.GetSignalStrength(),
+                        distance,
+                        angle_to_other,
+                    )
+
                 # TODO: This is not needed because it will be called during Interact(other, self)
-                #other.SensorInteract(self)
+                # other.SensorInteract(self)
 
                 # If objects are touching and are solid we handle their collision
                 # TODO: Added 'and self.isSolid()' because it makes more sense
@@ -293,8 +463,14 @@ class Animat(WorldObject):
                         other.SetVelocity(averageVelocity)
 
                         # Offsetting location: After this object are not touching anymore
-                        self.OffsetLocation(vecToOther.GetReciprocal().GetNormalized() * (minDistance - vecToOther.GetLength()))
-                        other.OffsetLocation(vecToOther.GetNormalized() * (minDistance - vecToOther.GetLength()))
+                        self.OffsetLocation(
+                            vecToOther.GetReciprocal().GetNormalized()
+                            * (minDistance - vecToOther.GetLength())
+                        )
+                        other.OffsetLocation(
+                            vecToOther.GetNormalized()
+                            * (minDistance - vecToOther.GetLength())
+                        )
 
                     # Can be implemented to trigger additional actions during collision
                     self.OnCollision(other)
@@ -306,7 +482,9 @@ class Animat(WorldObject):
             else:
                 if self.myWorld.mySimulation.profile:
                     startTime = time.time()
-                    self.myWorld.mySimulation.profiler.functionsToProfile['animat.Interact.withObjects.Sensor.Interact']['count'] += 1
+                    self.myWorld.mySimulation.profiler.functionsToProfile[
+                        "animat.Interact.withObjects.Sensor.Interact"
+                    ]["count"] += 1
 
                 # Sensor's animats interact with others
                 self.SensorInteract(other)
@@ -314,16 +492,24 @@ class Animat(WorldObject):
                 if self.myWorld.mySimulation.profile:
                     endTime = time.time()
                     self.myWorld.mySimulation.profiler.functionsToProfile[
-                        'animat.Interact.withObjects.Sensor.Interact']['times'].append(endTime - startTime)
+                        "animat.Interact.withObjects.Sensor.Interact"
+                    ]["times"].append(endTime - startTime)
 
                 if self.myWorld.mySimulation.profile:
                     startTime = time.time()
                     self.myWorld.mySimulation.profiler.functionsToProfile[
-                        'animat.Interact.withObjects.Collision']['count'] += 1
+                        "animat.Interact.withObjects.Collision"
+                    ]["count"] += 1
 
                 if self.IsTouching(other):
                     if self.IsSolid() and other.IsSolid():
-                        self.OffsetLocation(self.collisionNormal * (self.GetRadius() - (self.GetLocation() - self.collisionPoint).GetLength()))
+                        self.OffsetLocation(
+                            self.collisionNormal
+                            * (
+                                self.GetRadius()
+                                - (self.GetLocation() - self.collisionPoint).GetLength()
+                            )
+                        )
 
                     # Can be implemented to trigger additional actions during collision
                     self.OnCollision(other)
@@ -334,7 +520,8 @@ class Animat(WorldObject):
                 if self.myWorld.mySimulation.profile:
                     endTime = time.time()
                     self.myWorld.mySimulation.profiler.functionsToProfile[
-                        'animat.Interact.withObjects.Collision']['times'].append(endTime - startTime)
+                        "animat.Interact.withObjects.Collision"
+                    ]["times"].append(endTime - startTime)
 
         # Can be implemented
         super().Interact(other)
@@ -346,7 +533,9 @@ class Animat(WorldObject):
         if vecToOther.GetLengthSquared() > minDistance * minDistance:
             return False
 
-        self.collisionPoint, self.collisionNormal = other.GetNearestPoint(self.GetLocation())
+        self.collisionPoint, self.collisionNormal = other.GetNearestPoint(
+            self.GetLocation()
+        )
 
         return other.IsCircular() or self.IsInside(self.collisionPoint)
 
@@ -359,13 +548,23 @@ class Animat(WorldObject):
             sensor.Interact(other)
 
     def Display(self):
-
-        if (self.GetWorld().GetDispConfig() & self.myWorld.worldDisplayType.DISPLAY_SENSORS) != 0:
+        if (
+            self.GetWorld().GetDispConfig()
+            & self.myWorld.worldDisplayType.DISPLAY_SENSORS
+        ) != 0:
             for sensor in self.sensors.values():
                 sensor.Display()
 
-        if (self.GetWorld().GetDispConfig() & self.myWorld.worldDisplayType.DISPLAY_TRAILS) != 0:
+        if (
+            self.GetWorld().GetDispConfig()
+            & self.myWorld.worldDisplayType.DISPLAY_TRAILS
+        ) != 0:
             self.trail.Display()
+
+        # Add signal display
+        # TODO: We could also add a setting to turn this on/off like above
+        if self.GetWorld().GetDispConfig():
+            self.signal.Display()
 
         if self.GetWorld().GetDispConfig():
             super().Display()
@@ -409,7 +608,7 @@ class Animat(WorldObject):
         glVertex2d(self.GetRadius() / 2.0, self.GetRadius() - 2.0)
         glEnd()
 
-    #------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------------------------------------------------------
     def GetVelocity(self):
@@ -488,13 +687,15 @@ class Animat(WorldObject):
         assert isinstance(s, float)
         self.maxTurn = s
 
-    def SetColour(self,
+    def SetColour(
+        self,
         part: int,
         col: Optional[list] = None,
         r: float = 0.0,
         g: float = 0.0,
         b: float = 0.0,
-        a: float = 1.0):
+        a: float = 1.0,
+    ):
 
         if col is not None:
             self.colours[part][:] = col
@@ -508,7 +709,9 @@ class Animat(WorldObject):
     def Serialise(self, out):
         # TODO: Make this pytonic
         out.write("Animat\n")
-        super(WorldObject, self).Serialise(out)  # Assuming WorldObject has a Serialise method
+        super(WorldObject, self).Serialise(
+            out
+        )  # Assuming WorldObject has a Serialise method
         out.write(str(self.controls) + "\n")
         out.write(str(self.velocity) + "\n")
         out.write(str(self.maxSpeed) + "\n")
