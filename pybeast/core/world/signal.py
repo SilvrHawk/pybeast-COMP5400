@@ -28,24 +28,21 @@ class Signal:
         g: float = 0.8,
         b: float = 1.0,
         a: float = 0.3,
-        ringCount: int = 3,
     ):
         self.colour = [r, g, b, a]
         self.visible = Visible
-        self.ringCount = ringCount
 
         # Signal state
         self.active = False
         self.value = 0.0
-        self.display_radius = 50.0
-        self.strength = 50.0  # Actual signal strength (changes with activation)
+        self.strength = 50.0
         self.location = Vector2D()
         self.activationTime = 0.0
 
     def Display(self):
         """Render the signal as a solid disk."""
         # Don't display anything if radius is 0 or very small
-        if self.display_radius < 1.0:
+        if self.strength < 1.0:
             return
 
         # Save current position for drawing
