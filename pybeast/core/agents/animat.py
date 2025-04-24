@@ -90,6 +90,7 @@ class Animat(WorldObject):
         randomColour: bool = True,
         interactionRange: float = np.inf,
         controls: Optional[Dict[str, float]] = None,
+        signalAgent: bool = False,
         signalStrength: float = 0.0,  # Default to no signal range
     ):
 
@@ -104,6 +105,8 @@ class Animat(WorldObject):
         self.timeStep = timeStep
         self.randomColour = randomColour
         self.interactionRange = interactionRange
+        # By default, set to False, useful for when introducing weights into FFNAnimat class
+        self.sensorAgent = signalAgent
 
         self.colours = ANIMAT_COLOURS
         self.colours[AnimatPartType.ANIMAT_BODY] = self.GetColour()
@@ -125,10 +128,17 @@ class Animat(WorldObject):
         Animat.numAnimats += 1
 
         # Set the default signal values
+        
+        # For now, set to a default value, can be editted later
+        # TODO: could probably replace vocabSize with a parameter during initialisation
+        self.vocabSize = 1
         self.signal_strength = signalStrength
         self.signal_value = 0.0
         self.is_transmitting = False
         self.received_signals = {}
+
+        # List of average signals for each signal type, useful for feeding into the evoFFN
+        self.absolute_signals = {}
 
         # Set signal display radius to match signal strength
         # TODO: display radius could probably be the same as signal strength but keep it this way for now
@@ -263,6 +273,42 @@ class Animat(WorldObject):
         Get all received signals
         """
         return self.received_signals
+    
+    def GetAveragedSignals(self) -> Dict:
+        """
+        Get the averaged signals for each signal type
+        """
+        temp = {}
+
+        for signal in self.received_signals.values():
+            val = signal["value"]
+            strength = signal["strength"]
+            angle = signal["angle"]
+
+            if val not in temp:
+                temp[val] = {"strength": [strength],
+                             "angle": [angle]
+                }
+            else:
+                temp[val]["strength"].append(strength)
+                temp[val]["angle"].append(angle)
+
+        for value, data in temp.items():
+            strength = np.array(data["strength"])
+            angle = np.array(data["angle"])
+
+            avg_strength = np.mean(strength)
+            x_comp = np.cos(angle)
+            y_comp = np.sin(angle)
+
+            avg_x = np.mean(x_comp)
+            avg_y = np.mean(y_comp)
+            avg_angle = np.arctan2(avg_y, avg_x)
+
+            # For normalisation [0.0, 1.0] of signal for FFN
+            self.absolute_signals[value] = avg_strength*np.cos(avg_angle)/ANIMAT_MAX_SIGNAL_STRENGTH
+
+        return self.absolute_signals
 
     def InitColour(self):
 
@@ -641,6 +687,9 @@ class Animat(WorldObject):
 
     def GetControls(self):
         return self.controls
+    
+    def GetSignal(self):
+        return self.signal
 
     # ------------------------------------------------------------------------------------------------------------------
     # Mutators
@@ -671,6 +720,9 @@ class Animat(WorldObject):
 
     def SetVelocityY(self, y: float):
         self.velocity.y = y
+
+    def SetSignalAgent(self, signalAgent: bool):
+        self.signalAgent = signalAgent
 
     def AddVelocity(self, v: Vector2D):
         self.velocity + v

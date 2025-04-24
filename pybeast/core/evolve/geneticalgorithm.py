@@ -349,6 +349,7 @@ class GeneticAlgorithm(ABC):
                     evo.GAProbability = 0.0
                 else:
                     evo.GAProbability = (evo.GAFixedFitness / self.totalFixedFitness) ** self.fltParams.GA_EXPONENT
+                    #print(self.totalFixedFitness)
                     self.totalProbability += evo.GAProbability
 
         # Rank selection:

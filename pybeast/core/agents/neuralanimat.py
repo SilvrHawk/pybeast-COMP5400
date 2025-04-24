@@ -81,9 +81,13 @@ class FFNAnimat(BrainAnimat):
         :param outputs: The number of outputs, defaults to be the same as the number
                         of controls on the Animat.
         """
-        if hidden == -1:
+        if hidden == -1 and self.signalAgent:
+            hidden = len(self.GetSensors()) + self.vocabSize
+        elif hidden == -1:
             hidden = len(self.GetSensors())
-        if inputs == -1:
+        if inputs == -1 and self.signalAgent:
+            inputs = len(self.GetSensors()) + self.vocabSize
+        elif inputs == -1:
             inputs = len(self.GetSensors())
         if outputs == -1:
             outputs = len(self.GetControls())
@@ -95,8 +99,15 @@ class FFNAnimat(BrainAnimat):
 
     def GetBrainOutput(self):
 
-        for n, sensor in enumerate(self.GetSensors().values()):
+        n = 0
+
+        for i, sensor in enumerate(self.GetSensors().values()):
             self.myBrain.SetInput(n, float(sensor.GetOutput()))
+            n += 1
+
+        # If the animat is a signal agent, we need to also add averaged signals
+        for signal, avg_strength in self.GetAveragedSignals().items():
+            self.myBrain.SetInput(n, float(avg_strength))
             n += 1
 
         self.myBrain.Fire()
