@@ -141,8 +141,7 @@ class Animat(WorldObject):
         self.absolute_signals = {}
 
         # Set signal display radius to match signal strength
-        # TODO: display radius could probably be the same as signal strength but keep it this way for now
-        self.signal.display_radius = self.signal_strength
+        self.signal.strength = self.signal_strength
 
     def __del__(self):
 
@@ -199,8 +198,6 @@ class Animat(WorldObject):
         """
         self.signal_strength = min(strength, ANIMAT_MAX_SIGNAL_STRENGTH)
         # Update the display radius to match the signal strength
-        # TODO: Again, we could probably use only one variable for both but keep it this way for now
-        self.signal.display_radius = self.signal_strength
         # Also update the transmission strength
         self.signal.strength = self.signal_strength
 
