@@ -494,3 +494,62 @@ class BeamSensor(Sensor):
     def SetWrapping(self, w: bool):
         self.wrap = w
 
+
+class SignalSensor(Sensor):
+    """A sensor that detects signals from other animats."""
+    
+    def __init__(self):
+        super().__init__()
+        self.signal_value = 0.0
+        self.signal_angle = 0.0
+        self.has_signal = 0.0
+    
+    def Interact(self, other):
+        """
+        Override the base Interact method - signal sensors don't use the standard
+        matching/evaluation functions as they process signals differently.
+        """
+        # Signal sensors don't use the interact method for processing signals
+        # They get signals directly through the animat's received_signals
+        pass
+    
+    def Update(self):
+        """Update the sensor based on received signals."""
+        self.signal_value = 0.0
+        self.signal_angle = 0.0
+        self.has_signal = 0.0
+        
+        animat = self.GetOwner()
+        if not animat:
+            return
+            
+        # Process received signals
+        signals = animat.GetReceivedSignals()
+        if signals:
+            strongest_signal = 0.0
+            for k, v in signals.items():
+                if v["strength"] > strongest_signal:
+                    strongest_signal = v["strength"]
+                    self.signal_value = v["value"]
+                    
+                    if "angle" in v:
+                        # Normalize angle to range [-1, 1] for the neural network
+                        angle = v["angle"]
+                        # Ensure angle is in [-pi, pi] range
+                        while angle > np.pi:
+                            angle -= 2 * np.pi
+                        while angle < -np.pi:
+                            angle += 2 * np.pi
+                        self.signal_angle = angle / np.pi
+            
+            if strongest_signal > 0:
+                self.has_signal = 1.0
+    
+    def GetOutput(self):
+        """Return the sensor outputs as a list for the neural network."""
+        # return [self.has_signal, self.signal_value, self.signal_angle]
+        return [self.signal_value, self.signal_angle]
+    
+    def Display(self):
+        """Optionally display the sensor (can be empty)."""
+        pass

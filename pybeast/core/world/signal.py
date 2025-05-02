@@ -59,7 +59,9 @@ class Signal:
             displayColor = [1.0, 0.2, 0.2, 0.25]  # Red with transparency
         else:
             # Cyan solid disk when inactive
-            displayColor = [0.2, 0.8, 1.0, 0.08]  # Faint cyan
+            # displayColor = [0.2, 0.8, 1.0, 0.08]  # Faint cyan
+            # else no signal
+            displayColor = [0.0, 0.0, 0.0, 0.0]
 
         radius = self.strength
 

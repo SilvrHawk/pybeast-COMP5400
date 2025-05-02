@@ -34,13 +34,14 @@ class Neuron:
         :param p: A pointer to the parent DynamicalNet
         '''
 
-        self.input_channel = in_ch
-        self.output_channel = out_ch
+        self.inputChannel = in_ch
+        self.outputChannel = out_ch
 
         self.activation = 0.0
         self.inputWeights = np.random.uniform(-1.0, 1.0, N_input)
         self.outputWeights = np.random.uniform(-1.0, 1.0, N_output)
-        self.weights = np.random.uniform(total + 2)
+        # self.weights = np.random.uniform(size=total + 2)
+        self.weights = np.random.uniform(size=total)
 
         self.parent = parent
         self.bias = bias

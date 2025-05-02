@@ -91,6 +91,7 @@ class Animat(WorldObject):
         interactionRange: float = np.inf,
         controls: Optional[Dict[str, float]] = None,
         signalStrength: float = 0.0,  # Default to no signal range
+        signalAgent: bool = False,
     ):
 
         super().__init__(
@@ -104,6 +105,7 @@ class Animat(WorldObject):
         self.timeStep = timeStep
         self.randomColour = randomColour
         self.interactionRange = interactionRange
+        self.signalAgent = signalAgent
 
         self.colours = ANIMAT_COLOURS
         self.colours[AnimatPartType.ANIMAT_BODY] = self.GetColour()
@@ -348,11 +350,12 @@ class Animat(WorldObject):
 
         self.distanceTravelled += self.velocity.GetLength() * dt
 
-        for control in self.controls.values():
-            self.powerUsed += (
-                (self.maxSpeed - self.minSpeed) * abs(control) + self.minSpeed
-            ) * dt
-
+        for control in self.controls:
+            if control != "signal":
+                self.powerUsed += (
+                    (self.maxSpeed - self.minSpeed) * abs(self.controls[control]) + self.minSpeed
+                ) * dt
+        
         self.trail.Append(copy.deepcopy(self.GetLocation()))
         self.trail.Update()
 
@@ -662,6 +665,10 @@ class Animat(WorldObject):
 
     def SetVelocity(self, pv: Vector2D):
         self.velocity = pv
+
+    def SetSignalAgent(self, signalAgent: bool):
+        self.signalAgent = signalAgent
+        self.controls["signal"] = 0.0
 
     def SetVelocityX(self, x: float):
         self.velocity.x = x

@@ -16,6 +16,7 @@ from pybeast.core.agents.animat import Animat
 from pybeast.core.control.feedforwardnet import FeedForwardNet
 from pybeast.core.control.dynamicalnet import DynamicalNet
 from pybeast.core.evolve.evolver import Evolver
+from pybeast.core.sensors.sensor import SignalSensor
 
 class BrainAnimat(Animat):
 
@@ -94,13 +95,20 @@ class FFNAnimat(BrainAnimat):
 
 
     def GetBrainOutput(self):
-
-        for n, sensor in enumerate(self.GetSensors().values()):
-            self.myBrain.SetInput(n, float(sensor.GetOutput()))
-            n += 1
+        """Process sensor inputs for the neural network."""
+        n = 0
+        for sensor in self.GetSensors().values():
+            if isinstance(sensor, SignalSensor):
+                signal_outputs = sensor.GetOutput()
+                for value in signal_outputs:
+                    self.myBrain.SetInput(n, float(value))
+                    n += 1
+            else:
+                self.myBrain.SetInput(n, float(sensor.GetOutput()))
+                n += 1
 
         self.myBrain.Fire()
-
+        
         return self.myBrain.GetOutputs()
 
     def Control(self):
@@ -233,7 +241,24 @@ class DNNAnimat(BrainAnimat):
             outputs = len(self.GetControls())
 
         self.myBrain = DynamicalNet(inputs, outputs, total, multiInput, multiOutput)
-        self.myBrain.Randomise()
+        self.myBrain.Randomize()
+    
+    def GetBrainOutput(self):
+        """Process sensor inputs for the neural network."""
+        n = 0
+        for sensor in self.GetSensors().values():
+            if isinstance(sensor, SignalSensor):
+                signal_outputs = sensor.GetOutput()
+                for value in signal_outputs:
+                    self.myBrain.SetInput(n, float(value))
+                    n += 1
+            else:
+                self.myBrain.SetInput(n, float(sensor.GetOutput()))
+                n += 1
+
+        self.myBrain.Fire()
+        
+        return self.myBrain.GetOutputs()
 
     def Control(self):
         """
@@ -245,19 +270,30 @@ class DNNAnimat(BrainAnimat):
                   Animat is not set up in this way your needs are likely greater
                   than can be provided for by DNNAnimat.
         """
-        n = 0
-        for sensor in self.GetSensors().values():
-            self.myBrain.SetInput(n, float(sensor.GetOutput()))
-            n += 1
+        # n = 0
+        # for sensor in self.GetSensors().values():
+        #     if isinstance(sensor, SignalSensor):
+        #         signal_outputs = sensor.GetOutput()
+        #         for value in signal_outputs:
+        #             self.myBrain.SetInput(n, float(value))
+        #             n += 1
+        #     else:
+        #         self.myBrain.SetInput(n, float(sensor.GetOutput()))
+        #         n += 1
 
-        self.myBrain.Fire()
+        # self.myBrain.Fire()
 
-        n = 0
-        for controlName in self.GetControls().keys():
-            self.GetControls()[controlName] = self.myBrain.GetOutput(n)
-            n += 1
+        # n = 0
+        # for controlName in self.GetControls().keys():
+        #     self.GetControls()[controlName] = self.myBrain.GetOutput(n)
+        #     n += 1
 
-        super().Control()
+        # super().Control()
+        
+        outputs = self.GetBrainOutput()
+
+        for controlName, output in zip(self.controls.keys(), outputs):
+            self.controls[controlName] = output
 
     def Serialise(self, out):
         """
@@ -300,11 +336,64 @@ class EvoDNNAnimat(DNNAnimat, Evolver):
         DNNAnimat
     """
     def __init__(self):
-        super().__init__()
+        DNNAnimat.__init__(self)
+        Evolver.__init__(self)
 
-    def SetGenotype(self, g: List[float]):
-        self.GetBrain().SetConfiguration(g)
+    def SetGenotype(self, genome: List[float]):
+        """
+        Convert flat genome list back into the configuration structure needed by DynamicalNet
+        """
+        # First determine how to split the genome for each neuron
+        configs = []
+        brain = self.GetBrain()
+        neurons = brain.GetNeurons()
+        
+        # Track our position in the genome
+        pos = 0
+        
+        # For each neuron in the network
+        for neuron in neurons:
+            input_size = len(neuron.inputWeights)
+            output_size = len(neuron.outputWeights)
+            weights_size = len(neuron.weights)
+            
+            # Extract the sections for this neuron
+            input_weights = genome[pos:pos+input_size]
+            pos += input_size
+            
+            output_weights = genome[pos:pos+output_size]
+            pos += output_size
+            
+            weights = genome[pos:pos+weights_size]
+            pos += weights_size
+            
+            # Create a configuration dictionary for this neuron
+            config = {
+                'inputWeights': np.array(input_weights),
+                'outputWeights': np.array(output_weights),
+                'weights': np.array(weights)
+            }
+            configs.append(config)
+        
+        # Set the brain configuration with our restructured configs
+        brain.SetConfiguration(configs)
 
     def GetGenotype(self) -> List[float]:
-        return self.GetBrain().GetConfiguration()
+        """
+        Flatten the brain configuration into a single list of floats for the GA
+        """
+        brain = self.GetBrain()
+        configs = brain.GetConfiguration()
+        
+        # Create a flat list from all the neuron configurations
+        flat_genome = []
+        for config in configs:
+            # Add all inputWeights
+            flat_genome.extend(config['inputWeights'].tolist())
+            # Add all outputWeights
+            flat_genome.extend(config['outputWeights'].tolist())
+            # Add all weights
+            flat_genome.extend(config['weights'].tolist())
+        
+        return flat_genome
 
