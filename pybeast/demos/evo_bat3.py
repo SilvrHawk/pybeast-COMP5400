@@ -82,7 +82,11 @@ class EvoBat(EvoFFNAnimat):
         self.foodBonus = 0.0
 
         # Initialize neural network
-        self.AddFFNBrain(hidden=4, inputs=4, outputs=3)
+        self.AddFFNBrain(hidden=4, inputs=3, outputs=3)
+
+        # Set inputs to the neural network as (other_sensors) + (2*signals) for old method
+        #self.AddFFNBrain(hidden=4, inputs=4, outputs=3)
+
         # self.InitDNN(total=4, inputs=4, outputs=3)
 
     def Update(self):

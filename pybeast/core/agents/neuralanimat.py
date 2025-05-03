@@ -98,10 +98,16 @@ class FFNAnimat(BrainAnimat):
         """Process sensor inputs for the neural network."""
         n = 0
         for sensor in self.GetSensors().values():
+            ## OLD METHOD
+            # if isinstance(sensor, SignalSensor):
+            #     signal_outputs = sensor.GetOutput()
+            #     for value in signal_outputs:
+            #         self.myBrain.SetInput(n, float(value))
+            #         n += 1
+
             if isinstance(sensor, SignalSensor):
-                signal_outputs = sensor.GetOutput()
-                for value in signal_outputs:
-                    self.myBrain.SetInput(n, float(value))
+                for signal, avg_strength in self.GetAveragedSignals().items():
+                    self.myBrain.SetInput(n, float(avg_strength))
                     n += 1
             else:
                 self.myBrain.SetInput(n, float(sensor.GetOutput()))
@@ -247,10 +253,16 @@ class DNNAnimat(BrainAnimat):
         """Process sensor inputs for the neural network."""
         n = 0
         for sensor in self.GetSensors().values():
+            ## OLD METHOD
+            # if isinstance(sensor, SignalSensor):
+            #     signal_outputs = sensor.GetOutput()
+            #     for value in signal_outputs:
+            #         self.myBrain.SetInput(n, float(value))
+            #         n += 1
+            
             if isinstance(sensor, SignalSensor):
-                signal_outputs = sensor.GetOutput()
-                for value in signal_outputs:
-                    self.myBrain.SetInput(n, float(value))
+                for signal, avg_strength in self.GetAveragedSignals().items():
+                    self.myBrain.SetInput(n, float(avg_strength))
                     n += 1
             else:
                 self.myBrain.SetInput(n, float(sensor.GetOutput()))

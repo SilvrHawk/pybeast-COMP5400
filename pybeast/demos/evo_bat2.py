@@ -1,4 +1,5 @@
 import numpy as np
+import random
 
 # Pybeast imports
 from pybeast.core.agents.neuralanimat import EvoFFNAnimat, EvoDNNAnimat
@@ -70,7 +71,11 @@ class EvoBat(EvoFFNAnimat):
         self.dishonest_signals = 0
 
         # Initialize neural network
-        self.AddFFNBrain(hidden=4, inputs=4, outputs=3)
+        self.AddFFNBrain(hidden=4, inputs=3, outputs=3)
+
+        # Set inputs to the neural network as (other_sensors) + (2*signals) for old method
+        #self.AddFFNBrain(hidden=4, inputs=4, outputs=3)
+
         # self.InitDNN(total=4, inputs=4, outputs=3)
 
     def Update(self):
@@ -140,6 +145,8 @@ class EvoBat(EvoFFNAnimat):
 
 
 class EvoBatSimulation2(Simulation):
+    random.seed(42)
+    np.random.seed(42)
     """Simulation for evolving bats that communicate with signals."""
 
     def __init__(self):

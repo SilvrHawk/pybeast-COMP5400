@@ -131,7 +131,10 @@ class Animat(WorldObject):
         self.signal_value = 0.0
         self.is_transmitting = False
         self.received_signals = {}
-
+        
+        # List of average signals for each signal type, useful for feeding into the evoFFN
+        self.absolute_signals = {}
+        
         # Set signal display radius to match signal strength
         self.signal.strength = self.signal_strength
 
@@ -262,6 +265,42 @@ class Animat(WorldObject):
         Get all received signals
         """
         return self.received_signals
+    
+    def GetAveragedSignals(self) -> Dict:
+        """
+        Get the averaged signals for each signal type
+        """
+        temp = {}
+
+        for signal in self.received_signals.values():
+            val = signal["value"]
+            strength = signal["strength"]
+            angle = signal["angle"]
+
+            if val not in temp:
+                temp[val] = {"strength": [strength],
+                             "angle": [angle]
+                }
+            else:
+                temp[val]["strength"].append(strength)
+                temp[val]["angle"].append(angle)
+
+        for value, data in temp.items():
+            strength = np.array(data["strength"])
+            angle = np.array(data["angle"])
+
+            avg_strength = np.mean(strength)
+            x_comp = np.cos(angle)
+            y_comp = np.sin(angle)
+
+            avg_x = np.mean(x_comp)
+            avg_y = np.mean(y_comp)
+            avg_angle = np.arctan2(avg_y, avg_x)
+
+            # For normalisation [0.0, 1.0] of signal for FFN
+            self.absolute_signals[value] = avg_strength*np.cos(avg_angle)/ANIMAT_MAX_SIGNAL_STRENGTH
+
+        return self.absolute_signals
 
     def InitColour(self):
 

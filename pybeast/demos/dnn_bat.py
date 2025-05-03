@@ -69,7 +69,10 @@ class EvoDNNBat(EvoDNNAnimat):
         self.dishonest_signals = 0
 
         # Initialize neural network
-        self.InitDNN(total=6, inputs=4, outputs=3)
+        self.InitDNN(total=6, inputs=3, outputs=3)
+
+        # Set inputs to the neural network as (other_sensors) + (2*signals) for old methoD
+        #self.InitDNN(total=6, inputs=4, outputs=3)
 
     def Control(self):
         """Process neural network outputs to control the bat."""
