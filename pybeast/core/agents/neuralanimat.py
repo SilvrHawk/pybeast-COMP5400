@@ -82,10 +82,12 @@ class FFNAnimat(BrainAnimat):
         :param outputs: The number of outputs, defaults to be the same as the number
                         of controls on the Animat.
         """
+
+        ## TEMPORARY MEASURES TO COPE WITH MULTIPLE SIGNAL INPUTS
         if hidden == -1:
-            hidden = len(self.GetSensors())
+            hidden = len(self.GetSensors()) + (self.vocabSize -1 if self.vocabSize > 0 else 0)
         if inputs == -1:
-            inputs = len(self.GetSensors())
+            inputs = len(self.GetSensors()) + (self.vocabSize -1 if self.vocabSize > 0 else 0)
         if outputs == -1:
             outputs = len(self.GetControls())
 
@@ -262,6 +264,7 @@ class DNNAnimat(BrainAnimat):
             
             if isinstance(sensor, SignalSensor):
                 for signal, avg_strength in self.GetAveragedSignals().items():
+                    print(signal, avg_strength)
                     self.myBrain.SetInput(n, float(avg_strength))
                     n += 1
             else:

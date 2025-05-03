@@ -92,6 +92,7 @@ class Animat(WorldObject):
         controls: Optional[Dict[str, float]] = None,
         signalStrength: float = 0.0,  # Default to no signal range
         signalAgent: bool = False,
+        vocabSize: int = 1,
     ):
 
         super().__init__(
@@ -127,6 +128,9 @@ class Animat(WorldObject):
         Animat.numAnimats += 1
 
         # Set the default signal values
+
+        # TODO: could probably replace vocabSize with a parameter during initialisation
+        self.vocabSize = vocabSize
         self.signal_strength = signalStrength
         self.signal_value = 0.0
         self.is_transmitting = False
@@ -134,7 +138,7 @@ class Animat(WorldObject):
         
         # List of average signals for each signal type, useful for feeding into the evoFFN
         self.absolute_signals = {}
-        
+
         # Set signal display radius to match signal strength
         self.signal.strength = self.signal_strength
 
@@ -202,6 +206,14 @@ class Animat(WorldObject):
         """
         self.signal_value = value
 
+    def SetAbsoluteSignal(self):
+        temp = {}
+
+        for i in range(self.vocabSize):
+            temp[(i+1)] = 0.0
+
+        self.absolute_signals = temp
+    
     def StartTransmitting(self):
         """
         Begin transmitting the signal
@@ -270,6 +282,8 @@ class Animat(WorldObject):
         """
         Get the averaged signals for each signal type
         """
+        self.SetAbsoluteSignal()
+
         temp = {}
 
         for signal in self.received_signals.values():
