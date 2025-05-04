@@ -503,6 +503,15 @@ class SignalSensor(Sensor):
         self.signal_value = 0.0
         self.signal_angle = 0.0
         self.has_signal = 0.0
+
+        self.absolute_signals = {}
+
+    def SetAbsoluteSignal(self, animat):
+        temp = {}
+        for i in range(animat.vocabSize):
+            temp[(i+1)] = 0.0
+
+        self.absolute_signals = temp
     
     def Interact(self, other):
         """
@@ -523,32 +532,41 @@ class SignalSensor(Sensor):
         if not animat:
             return
             
-        # Process received signals
-        signals = animat.GetReceivedSignals()
-        if signals:
-            strongest_signal = 0.0
-            for k, v in signals.items():
-                if v["strength"] > strongest_signal:
-                    strongest_signal = v["strength"]
-                    self.signal_value = v["value"]
-                    
-                    if "angle" in v:
-                        # Normalize angle to range [-1, 1] for the neural network
-                        angle = v["angle"]
-                        # Ensure angle is in [-pi, pi] range
-                        while angle > np.pi:
-                            angle -= 2 * np.pi
-                        while angle < -np.pi:
-                            angle += 2 * np.pi
-                        self.signal_angle = angle / np.pi
-            
-            if strongest_signal > 0:
-                self.has_signal = 1.0
+        self.SetAbsoluteSignal(animat)
+        temp = {}
+
+        for signal in animat.received_signals.values():
+            val = signal["value"]
+            strength = signal["strength"]
+            angle = signal["angle"]
+
+            if val not in temp:
+                temp[val] = {"strength": [strength],
+                             "angle": [angle]
+                }
+            else:
+                temp[val]["strength"].append(strength)
+                temp[val]["angle"].append(angle)
+
+        for value, data in temp.items():
+            strength = np.array(data["strength"])
+            angle = np.array(data["angle"])
+
+            avg_strength = np.mean(strength)
+            x_comp = np.cos(angle)
+            y_comp = np.sin(angle)
+
+            avg_x = np.mean(x_comp)
+            avg_y = np.mean(y_comp)
+            avg_angle = np.arctan2(avg_y, avg_x)
+
+            # For normalisation [0.0, 1.0] of signal for FFN
+            self.absolute_signals[value] = avg_strength*np.cos(avg_angle)/animat.signal_strength
     
     def GetOutput(self):
         """Return the sensor outputs as a list for the neural network."""
-        # return [self.has_signal, self.signal_value, self.signal_angle]
-        return [self.signal_value, self.signal_angle]
+        
+        return self.absolute_signals
     
     def Display(self):
         """Optionally display the sensor (can be empty)."""

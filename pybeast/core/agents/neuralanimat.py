@@ -108,7 +108,7 @@ class FFNAnimat(BrainAnimat):
             #         n += 1
 
             if isinstance(sensor, SignalSensor):
-                for signal, avg_strength in self.GetAveragedSignals().items():
+                for signal, avg_strength in sensor.GetOutput().items():
                     self.myBrain.SetInput(n, float(avg_strength))
                     n += 1
             else:
@@ -118,6 +118,16 @@ class FFNAnimat(BrainAnimat):
         self.myBrain.Fire()
         
         return self.myBrain.GetOutputs()
+    
+    def GetSelfSignal(self, signals) -> int:
+        """
+        Get the signal value for the current animat
+        """
+
+        exp_logits = np.exp(signals - np.max(signals))
+        prob = exp_logits / np.sum(exp_logits)
+        
+        return np.random.choice(self.vocabSize, p=prob)+1
 
     def Control(self):
         """
@@ -263,7 +273,7 @@ class DNNAnimat(BrainAnimat):
             #         n += 1
             
             if isinstance(sensor, SignalSensor):
-                for signal, avg_strength in self.GetAveragedSignals().items():
+                for signal, avg_strength in sensor.GetOutput().items():
                     self.myBrain.SetInput(n, float(avg_strength))
                     n += 1
             else:
