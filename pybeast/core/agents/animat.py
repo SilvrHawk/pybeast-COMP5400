@@ -193,8 +193,6 @@ class Animat(WorldObject):
         Set the strength/range of the transmitter signal
         """
         self.signal_strength = min(strength, ANIMAT_MAX_SIGNAL_STRENGTH)
-        # Update the display radius to match the signal strength
-        # Also update the transmission strength
         self.signal.strength = self.signal_strength
 
     def SetSignalValue(self, value: float):
@@ -203,7 +201,6 @@ class Animat(WorldObject):
         """
         self.signal_value = value
 
-    
     def StartTransmitting(self):
         """
         Begin transmitting the signal
@@ -211,7 +208,7 @@ class Animat(WorldObject):
         self.is_transmitting = True
         # Activate the signal visualization
         self.signal.Activate(
-            self.GetLocation(), self.signal_strength, self.signal_value
+            self.GetLocation(), self.signal_strength, self.signal_value, self.vocabSize
         )
 
     def StopTransmitting(self):
@@ -259,14 +256,14 @@ class Animat(WorldObject):
                 "strength": attenuated_strength,
                 "distance": distance,
                 "timestamp": time.time(),
-                "angle": angle,  # Store the angle to sender
+                "angle": angle,
             }
 
     def GetReceivedSignals(self) -> Dict:
         """
         Get all received signals
         """
-        return self.received_signals   
+        return self.received_signals
 
     def InitColour(self):
 
@@ -358,14 +355,15 @@ class Animat(WorldObject):
         for control in self.controls:
             if control != "signal":
                 self.powerUsed += (
-                    (self.maxSpeed - self.minSpeed) * abs(self.controls[control]) + self.minSpeed
+                    (self.maxSpeed - self.minSpeed) * abs(self.controls[control])
+                    + self.minSpeed
                 ) * dt
-        
+
         self.trail.Append(copy.deepcopy(self.GetLocation()))
         self.trail.Update()
 
         # Always update signal position, even when not transmitting
-        self.signal.Update(copy.deepcopy(self.GetLocation()))
+        self.signal.Update(copy.deepcopy(self.GetLocation()), self.signal_value)
         # Clear received signals after processing (to avoid feedback loops)
         self.received_signals.clear()
 
@@ -419,7 +417,7 @@ class Animat(WorldObject):
                     # Calculate angle from other to self
                     vec_to_self = self.location - other.location
                     angle_to_self = vec_to_self.GetAngle() - other.GetOrientation()
-                    # Normalize to range [-π, π]
+                    # Normalize to range [-pi, pi]
                     while angle_to_self > np.pi:
                         angle_to_self -= TWO_PI
                     while angle_to_self < -np.pi:
@@ -439,7 +437,7 @@ class Animat(WorldObject):
                     # Calculate angle from self to other
                     vec_to_other = other.location - self.location
                     angle_to_other = vec_to_other.GetAngle() - self.GetOrientation()
-                    # Normalize to range [-π, π]
+                    # Normalize to range [-pi, pi]
                     while angle_to_other > np.pi:
                         angle_to_other -= 2 * np.pi
                     while angle_to_other < -np.pi:

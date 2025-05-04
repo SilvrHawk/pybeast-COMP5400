@@ -40,28 +40,59 @@ class Signal:
         self.location = Vector2D()
         self.activationTime = 0.0
 
+        self.vocab_size = 1
+
+    def normalize_value(self, value, vocab_size):
+        """
+        Normalize a value from range [1, vocab_size] to [0, 1]
+        """
+        if vocab_size <= 1:
+            return 0.0
+
+        return (value - 1) / (vocab_size - 1)
+
     def get_color_for_value(self, value):
         """
         Generate a color based on signal value in the range [-1, 1].
-        - Negative values (-1 to 0): Blue to White gradient
-        - Positive values (0 to 1): White to Red gradient
+        Uses a continuous colormap that transitions through:
+        Red > Orange > Yellow > Green > Cyan > Blue > Purple
+
+        If vocab_size is 1, always returns red color.
         """
-        # Clamp value to [-1, 1] range
-        value = max(-1.0, min(1.0, value))
+        if self.vocab_size == 1:
+            return [1.0, 0.0, 0.0, 0.3]
 
-        alpha = 0.3
+        value = max(0.0, min(1.0, value))
 
-        if value < 0:
-            # For negative values: gradient from blue (-1) to cyan (closer to 0)
-            intensity = abs(value)  # 0 to 1
-            return [0.0, intensity, 1.0, alpha]
-        elif value > 0:
-            # For positive values: gradient from yellow (closer to 0) to red (1)
-            intensity = value  # 0 to 1
-            return [1.0, 1.0 - (intensity * 0.8), 0.0, alpha]
-        else:
-            # Exactly zero: neutral green
-            return [0.0, 1.0, 0.0, alpha]
+        colors = [
+            (0.0, [1.0, 0.0, 0.0, 0.3]),  # Red
+            (0.17, [1.0, 0.5, 0.0, 0.3]),  # Orange
+            (0.33, [1.0, 1.0, 0.0, 0.3]),  # Yellow
+            (0.5, [0.0, 1.0, 0.0, 0.3]),  # Green
+            (0.67, [0.0, 1.0, 1.0, 0.3]),  # Cyan
+            (0.83, [0.0, 0.0, 1.0, 0.3]),  # Blue
+            (1.0, [0.5, 0.0, 0.5, 0.3]),  # Purple
+        ]
+
+        # Find the two color points to interpolate between
+        for i in range(len(colors) - 1):
+            pos1, color1 = colors[i]
+            pos2, color2 = colors[i + 1]
+
+            if value <= pos2:
+                # Calculate interpolation factor
+                t = (value - pos1) / (pos2 - pos1) if (pos2 - pos1) > 0 else 0
+
+                # Interpolate between colors
+                result = [
+                    color1[0] + t * (color2[0] - color1[0]),
+                    color1[1] + t * (color2[1] - color1[1]),
+                    color1[2] + t * (color2[2] - color1[2]),
+                    0.3,
+                ]
+                return result
+
+        return [1.0, 0.0, 0.0, 0.3]
 
     def Display(self):
         """Render the signal as a solid disk with color based on value."""
@@ -79,7 +110,7 @@ class Signal:
 
         # Determine color and alpha based on state and value
         if self.active:
-            # Use color based on signal value in [-1, 1] range
+            # Use color based on normalized signal value
             displayColor = self.get_color_for_value(self.value)
         else:
             # Transparent when inactive
@@ -96,14 +127,25 @@ class Signal:
         glDisable(GL_BLEND)
         glPopMatrix()
 
-    def Activate(self, location: Vector2D, strength: float, value: float):
+    def Activate(
+        self, location: Vector2D, strength: float, value: float, vocab_size=1.0
+    ):
         """
         Start displaying the signal at the given location.
+
+        Args:
+            location: Position to display the signal
+            strength: Radius/intensity of the signal
+            value: Signal value (integer in range [1, vocab_size])
+            vocab_size: Size of the vocabulary (optional)
         """
         self.active = True
         self.location = location
         self.strength = strength
-        self.value = value
+        self.vocab_size = vocab_size
+
+        normalized_value = self.normalize_value(value, self.vocab_size)
+        self.value = normalized_value
         self.activationTime = time.time()
 
     def Deactivate(self):
@@ -112,12 +154,15 @@ class Signal:
         """
         self.active = False
 
-    def Update(self, location: Vector2D = None):
+    def Update(self, location: Vector2D = None, value: float = None):
         """
         Update the signal position.
         """
         if location:
             self.location = location
+        if value:
+            normalized_value = self.normalize_value(value, self.vocab_size)
+            self.value = normalized_value
 
     def IsActive(self) -> bool:
         """
