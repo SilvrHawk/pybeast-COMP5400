@@ -135,9 +135,6 @@ class Animat(WorldObject):
         self.signal_value = 0.0
         self.is_transmitting = False
         self.received_signals = {}
-        
-        # List of average signals for each signal type, useful for feeding into the evoFFN
-        #self.absolute_signals = {}
 
         # Set signal display radius to match signal strength
         self.signal.strength = self.signal_strength
