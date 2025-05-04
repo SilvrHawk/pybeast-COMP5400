@@ -1,5 +1,6 @@
 # Built-in
 import time
+import numpy as np
 
 # Third-party
 from OpenGL.GL import *
@@ -39,8 +40,31 @@ class Signal:
         self.location = Vector2D()
         self.activationTime = 0.0
 
+    def get_color_for_value(self, value):
+        """
+        Generate a color based on signal value in the range [-1, 1].
+        - Negative values (-1 to 0): Blue to White gradient
+        - Positive values (0 to 1): White to Red gradient
+        """
+        # Clamp value to [-1, 1] range
+        value = max(-1.0, min(1.0, value))
+
+        alpha = 0.3
+
+        if value < 0:
+            # For negative values: gradient from blue (-1) to cyan (closer to 0)
+            intensity = abs(value)  # 0 to 1
+            return [0.0, intensity, 1.0, alpha]
+        elif value > 0:
+            # For positive values: gradient from yellow (closer to 0) to red (1)
+            intensity = value  # 0 to 1
+            return [1.0, 1.0 - (intensity * 0.8), 0.0, alpha]
+        else:
+            # Exactly zero: neutral green
+            return [0.0, 1.0, 0.0, alpha]
+
     def Display(self):
-        """Render the signal as a solid disk."""
+        """Render the signal as a solid disk with color based on value."""
         # Don't display anything if radius is 0 or very small
         if self.strength < 1.0:
             return
@@ -53,23 +77,20 @@ class Signal:
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-        # Determine color and alpha based on state
+        # Determine color and alpha based on state and value
         if self.active:
-            # Red solid disk when active
-            displayColor = [1.0, 0.2, 0.2, 0.25]  # Red with transparency
+            # Use color based on signal value in [-1, 1] range
+            displayColor = self.get_color_for_value(self.value)
         else:
-            # Cyan solid disk when inactive
-            # displayColor = [0.2, 0.8, 1.0, 0.08]  # Faint cyan
-            # else no signal
+            # Transparent when inactive
             displayColor = [0.0, 0.0, 0.0, 0.0]
 
         radius = self.strength
 
-        # Draw the solid disk
         glColor4f(displayColor[0], displayColor[1], displayColor[2], displayColor[3])
         signalDisk = gluNewQuadric()
         gluQuadricDrawStyle(signalDisk, GLU_FILL)
-        gluDisk(signalDisk, 0.0, radius, 32, 1)  # Start radius from 0 for solid disk
+        gluDisk(signalDisk, 0.0, radius, 32, 1)
         gluDeleteQuadric(signalDisk)
 
         glDisable(GL_BLEND)
@@ -81,6 +102,7 @@ class Signal:
         """
         self.active = True
         self.location = location
+        self.strength = strength
         self.value = value
         self.activationTime = time.time()
 
