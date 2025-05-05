@@ -1,18 +1,16 @@
 import numpy as np
+import random
 
 # Pybeast imports
-from pybeast.core.agents.neuralanimat import EvoFFNAnimat, EvoDNNAnimat
+from pybeast.core.agents.neuralanimat import EvoFFNAnimat
 from pybeast.core.evolve.population import Population, Group
 from pybeast.core.evolve.geneticalgorithm import GeneticAlgorithm, GASelectionType
 from pybeast.core.sensors.sensor import (
     SignalSensor,
     ProximitySensor,
-    NearestAngleSensor,
 )
 from pybeast.core.simulation import Simulation
 from pybeast.core.world.worldobject import WorldObject
-from pybeast.core.utils.colours import ColourPalette, ColourType
-from pybeast.core.utils.vector2D import Vector2D
 
 IsDemo = True
 GUIName = "EvoBat"
@@ -24,10 +22,25 @@ class Food(WorldObject):
 
     def __init__(self):
         super().__init__()
-        self.SetRadius(20.0)
+        self.SetRadius(30.0)
         self.SetResetRandom(True)
         self.SetColour(0.0, 0.8, 0.2, 1.0)
         self.id = id(self)
+
+    def getAward(self):
+        """Get the award for the food object."""
+        if self.myWorld is None:
+            return 0
+
+        # Count how many bats are nearby
+        nearby_bats = 0
+        for obj in self.myWorld.Get(EvoBat):
+            if (
+                isinstance(obj, EvoBat)
+                and (obj.GetLocation() - self.GetLocation()).GetLength() <= 20
+            ):
+                nearby_bats += 1
+        return nearby_bats
 
     def __del__(self):
         """Destructor."""
@@ -35,14 +48,12 @@ class Food(WorldObject):
 
 
 class EvoBat(EvoFFNAnimat):
-    # class EvoBat(EvoDNNAnimat):
     """Bat that can evolve to use signals to communicate food locations."""
 
     def __init__(self):
         super().__init__()
 
         # Basic animat settings
-        self.foodFound = False
         self.SetSolid(False)
         self.SetRadius(10.0)
         self.SetMinSpeed(40.0)
@@ -63,19 +74,15 @@ class EvoBat(EvoFFNAnimat):
         self.AddSensor("signal", SignalSensor())
         self.SetInteractionRange(200.0)
 
-        # Cooperation tracking
-        self.signaled_after_finding = 0
-
-        # Add dishonest signaling tracking
-        self.dishonest_signals = 0
+        self.foodFound = False
+        self.foodBonus = 0.0
+        self.stamina = 5.0
 
         # Initialize neural network
         self.AddFFNBrain(hidden=4, inputs=3, outputs=3)
 
         # Set inputs to the neural network as (other_sensors) + (2*signals) for old method
-        #self.AddFFNBrain(hidden=4, inputs=4, outputs=3)
-
-        # self.InitDNN(total=4, inputs=4, outputs=3)
+        # self.AddFFNBrain(hidden=4, inputs=4, outputs=3)
 
     def Update(self):
         """Update bat state before control."""
@@ -85,28 +92,18 @@ class EvoBat(EvoFFNAnimat):
         """Process neural network outputs to control the bat."""
         outputs = self.GetBrainOutput()
 
+        if not self.foodFound and self.stamina > 0:
+            self.stamina -= 0.1
+
         # First two outputs control movement
         self.controls["left"] = outputs[0]
         self.controls["right"] = outputs[1]
         # Third output controls signal emission
+        # if outputs[2] > 0 and self.foodFound:
         if outputs[2] > 0:
-            # if self.controls["signal"] > 0.5:
-
-            # This is a bit hacky, but it works for now
-            sensors = self.GetSensors()
-            food_sensor_r = sensors["foodR"].GetOutput()
-            food_sensor_l = sensors["foodL"].GetOutput()
-            near_food = food_sensor_r > 0.5 or food_sensor_l > 0.5
             if not self.IsTransmitting():
                 self.SetSignalValue(1.0)
                 self.StartTransmitting()
-
-                # If signaling when near food, count as cooperation
-                if near_food:
-                    self.signaled_after_finding += 1
-                # If signaling without being near food, count as dishonest
-                elif not near_food:
-                    self.dishonest_signals += 1
         else:
             if self.IsTransmitting():
                 self.StopTransmitting()
@@ -114,29 +111,54 @@ class EvoBat(EvoFFNAnimat):
     def Reset(self):
         """Reset bat state for new assessment."""
         self.foodFound = False
-        self.signaled_after_finding = 0
-        self.dishonest_signals = 0
+        self.foodBonus = 0.0
+        self.stamina = 5.0
         if self.IsTransmitting():
             self.StopTransmitting()
+
+        # Ensure minimum distance from food sources
+        if self.myWorld is not None:
+            min_distance = 200.0
+            food_objects = self.myWorld.Get(Food)
+
+            if food_objects:
+                # Try repositioning up to 10 times
+                for i in range(10):
+                    too_close = False
+                    for food in food_objects:
+                        distance = (self.GetLocation() - food.GetLocation()).GetLength()
+                        if distance < min_distance:
+                            too_close = True
+                            break
+
+                    if too_close:
+                        if self.myWorld:
+                            self.SetLocation(self.myWorld.RandomLocation())
+                            self.SetOrientation(np.random.uniform(0, 2 * np.pi))
+                    else:
+                        break
+
         super().Reset()
 
     def OnCollision(self, obj):
         """Handle collision with food."""
         if isinstance(obj, Food):
             self.foodFound = True
+            self.foodBonus += 0.001
+            factor = obj.getAward()
+            if factor > 1:
+                self.foodBonus += 0.1 * (2 ** (float(factor) / 2))
 
     def GetFitness(self) -> float:
         """Calculate fitness with group component and helper rewards."""
-        # Base fitness from finding food
-        individual_fitness = 5.0 if self.foodFound else 0.0
+        # An award for finding food
+        # individual_fitness = 3.0 if self.foodFound else 0.0
 
-        # Reward for signaling after finding food (announcing discoveries)
-        cooperation_bonus = self.signaled_after_finding * 2.0
+        # Get the food factor from the food object
+        food_factor = self.foodBonus
 
-        # Penalty for dishonest signaling (transmitting when not near food)
-        dishonest_penalty = self.dishonest_signals * 1.0
-
-        total_fitness = cooperation_bonus - dishonest_penalty + individual_fitness
+        # total_fitness = food_factor + individual_fitness + self.stamina
+        total_fitness = food_factor + self.stamina
 
         # Ensure fitness doesn't go negative
         return max(0.0, total_fitness)
@@ -147,6 +169,8 @@ class EvoBatSimulation(Simulation):
 
     def __init__(self):
         super().__init__("EvoBat Simulation")
+        random.seed(42)
+        np.random.seed(42)
 
         # create/clear log.csv file
         with open("other/log.csv", "w") as f:
@@ -160,11 +184,11 @@ class EvoBatSimulation(Simulation):
         # Set up genetic algorithm
         pop_size = 30
         self.theGA = GeneticAlgorithm(
-            0.25, 0.2, selection=GASelectionType.GA_TOURNAMENT
+            0.25, 0.35, selection=GASelectionType.GA_TOURNAMENT
         )
 
         self.Add("bats", Population(pop_size, EvoBat, self.theGA))
-        self.Add("food", Group(5, Food))
+        self.Add("food", Group(2, Food))
 
         # Logging settings
         self.sleepBetweenLogs = 0.0
