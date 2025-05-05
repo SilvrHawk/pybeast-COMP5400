@@ -17,7 +17,7 @@ from pybeast.core.evolve.geneticalgorithm import GeneticAlgorithm, Evolver, GASe
 import random
 
 IsDemo = True
-GUIName = "BatPredatorEvo"
+GUIName = "BatPredatorEvoAuton"
 SimClassName = "BatBaseSimulation"
 
 class Predator(EvoFFNAnimat):
@@ -25,64 +25,107 @@ class Predator(EvoFFNAnimat):
     A predator agent that can detect and chase the target.
     """
 
-    def __init__(self):
+    def __init__(self, vocabSize = 3):
         super().__init__()
 
         # Set agent properties
-        self.vocabSize = 3
+        self.vocabSize = vocabSize
         self.SetMinSpeed(50.0)
-        self.SetMaxSpeed(65.0)
+        self.SetMaxSpeed(72.0)
         self.SetTimeStep(0.05)
         self.SetRadius(30.0)
         self.SetMaxRotationSpeed(np.pi)
         self.preyCaptured = 0
         self.times_transmitted = 0
+        self.times_transmitted_false = 0
 
         # Configure signal properties
         self.SetSignalAgent(True)
         self.SetSignalStrength(150.0)
         self.touching_target = False
+        self.transmitted_correctly = False
+        self.transmitted_poorly = False
 
         self.AddSensor("signal", SignalSensor())
         self.SetInteractionRange(200.0)
 
-        self.AddFFNBrain(hidden=8, inputs=3, outputs=2)
+        self.AddSensor(
+            "preyR", ProximitySensor(EvoBat, np.pi / 2, 80, np.pi / 8, simple=True)
+        )
+        self.AddSensor(
+            "preyL", ProximitySensor(EvoBat, np.pi / 2, 80, -np.pi / 8, simple=True)
+        )
+
+        self.AddFFNBrain(hidden=10, inputs=2+vocabSize, outputs=2+vocabSize)
 
         # Set a red color for the predator
         Drawable.SetColour(self, 1.0, 0.0, 0.0, 1.0)
 
     def Reset(self):
+        print(self.times_transmitted_false)
         self.preyCaptured = 0
         self.times_transmitted = 0
+        self.times_transmitted_false = 0
+        self.transmitted_correctly = False
+        self.transmitted_poorly = False
         super().Reset()
-
-    def Update(self):
-        super().Update()
     
     def Control(self):
         """
         Control method that handles random movement and signal emission.
         """
-        super().Control()
+        #super().Control()
+        outputs = self.GetBrainOutput()
 
         # Movement from EvoFFNAnimat with bias
-        for n, k in enumerate(self.controls.keys()):
-            self.controls[k] = 0.5 * (self.controls[k] + 1.0)
+        # for n, k in enumerate(self.controls.keys()):
+        #     self.controls[k] = 0.5 * (self.controls[k] + 1.0)
+
+        self.controls["left"] = outputs[0]
+        self.controls["right"] = outputs[1]
+        signals = outputs[2:2+self.vocabSize]
+
+        exp_logits = np.exp(signals - np.max(signals))
+        prob = exp_logits / np.sum(exp_logits)
+        signal_id = np.random.choice(self.vocabSize, p=prob)+1
 
         #print(self.GetReceivedSignals())
-        value = any(signal.get('value') == 1.0 for signal in self.GetReceivedSignals().values())
+        #value = any(signal.get('value') == 1.0 for signal in self.GetReceivedSignals().values())
 
-        if value:
-            #print("yes")
-            self.times_transmitted += 1
-            self.SetSignalValue(2.0)
-            self.StartTransmitting()
+        if (sum(signals)/len(signals)) > 0.0:
+            sensors = self.GetSensors()
+            prey_sensor_r = sensors["preyR"].GetOutput()
+            prey_sensor_l = sensors["preyL"].GetOutput()
+            near_prey = prey_sensor_r > 0.25 or prey_sensor_l > 0.25
+            
+            if not self.IsTransmitting():
+                self.SetSignalValue(float(signal_id))
+                self.StartTransmitting()
+
+            if self.IsTransmitting():
+                if near_prey and signal_id==2:
+                    self.transmitted_correctly = True
+                    self.times_transmitted += 1
+                elif not near_prey or signal_id!=2:
+                    self.transmitted_poorly = True
+                    self.times_transmitted_false += 1
         else:
-            #print("stop")
-            self.SetSignalValue(0.0)
-            self.StopTransmitting()
+            if self.IsTransmitting():
+                self.SetSignalValue(0.0)
+                self.StopTransmitting()
 
     def OnCollision(self, other):
+        # Check if the object we collided with is our target
+        # if isinstance(other, TargetObject):
+        #     # Mark that we're touching the target this frame
+        #     self.touching_target = True
+
+        #     # Start transmitting if not already
+        #     if not self.IsTransmitting():
+                
+        #         # Increment the transmission count for fitness
+        #         self.SetSignalValue(2.0)
+        #         self.StartTransmitting()
         
         if isinstance(other, EvoBat):
             # Increment the prey captured count
@@ -90,7 +133,19 @@ class Predator(EvoFFNAnimat):
 
     def GetFitness(self) -> float:
 
-        return self.preyCaptured + 1 if self.preyCaptured > 0 else 1
+        n_tx = self.times_transmitted + self.times_transmitted_false
+
+        R_correct = 0.01 * (self.times_transmitted)
+
+        P_wrong = -0.1 * self.times_transmitted_false
+
+        c_tx = -0.01 * (n_tx)
+
+        total_fitness = (R_correct + P_wrong + c_tx + self.preyCaptured + 1)
+        print(total_fitness)
+
+        return max(1.0, total_fitness) if self.transmitted_correctly else 1.0
+        
 
 class TargetObject(WorldObject):
     """
@@ -144,55 +199,90 @@ class EvoBat(EvoFFNAnimat):
 
         # Track whether we're touching the target and times touched
         self.touching_target = False
-        self.times_transmitted = 0
-        self.times_caught = 0
+        self.times_transmitted_pred = 0
+        self.times_transmitted_food = 0
+        self.times_transmitted_false = 0
+        self.transmitted_food_correctly = False
+        self.transmitted_pred_correctly = False
+        self.transmitted_poorly = False
         self.foodFound = False
+        self.times_caught = 0
         self.foodBonus = 0.0
+
+        self.AddSensor(
+            "predR", ProximitySensor(Predator, np.pi / 2, 80, np.pi / 8, simple=True)
+        )
+        self.AddSensor(
+            "predL", ProximitySensor(Predator, np.pi / 2, 80, -np.pi / 8, simple=True)
+        )
+
+        self.AddSensor(
+            "foodR", ProximitySensor(TargetObject, np.pi / 2, 60, np.pi / 8, simple=True)
+        )
+        self.AddSensor(
+            "foodL", ProximitySensor(TargetObject, np.pi / 2, 60, -np.pi / 8, simple=True)
+        )
 
         self.AddSensor("signal", SignalSensor())
         self.SetInteractionRange(200.0)
 
-        self.AddFFNBrain(hidden=8, inputs=3, outputs=2)
+        self.AddFFNBrain(hidden=10, inputs=4+vocabSize, outputs=2+vocabSize)
 
         # Set a cyan color for the agent
         Drawable.SetColour(self, 0.0, 0.7, 1.0, 1.0)
     
-    def Update(self):
-        super().Update()
-
     def Control(self):
         """
         Control method that handles random movement and signal emission.
         """
-        super().Control()
+        #super().Control()
 
-        # Movement from EvoFFNAnimat with bias
-        for n, k in enumerate(self.controls.keys()):
-            self.controls[k] = 0.5 * (self.controls[k] + 1.0)
+        outputs = self.GetBrainOutput()
 
-        value = any(signal.get('value') == 2.0 for signal in self.GetReceivedSignals().values())
+        self.controls["left"] = outputs[0]
+        self.controls["right"] = outputs[1]
+        
+        signals = outputs[2:2+self.vocabSize]
+        signal_id = self.GetSelfSignal(signals)
 
-        # Reset touching_target flag at the start of each frame
-        if self.touching_target == True:
-            self.touching_target = False
-        else:
-            # If we were touching but no longer are, stop transmitting
+        if (sum(signals)/len(signals)) > 0.0:
+            sensors = self.GetSensors()
+            pred_sensor_r = sensors["predR"].GetOutput()
+            pred_sensor_l = sensors["predL"].GetOutput()
+            near_pred = pred_sensor_r > 0.25 or pred_sensor_l > 0.25
+
+            food_sensor_r = sensors["foodR"].GetOutput()
+            food_sensor_l = sensors["foodL"].GetOutput()
+            near_food = food_sensor_r > 0.3 or food_sensor_l > 0.3
+            
+            if not self.IsTransmitting():
+                self.SetSignalValue(float(signal_id))
+                self.StartTransmitting()
+
             if self.IsTransmitting():
+                if near_pred and signal_id==3:
+                    self.times_transmitted_pred += 1
+                    self.transmitted_pred_correctly = True
+                elif near_food and signal_id==1:
+                    self.transmitted_food_correctly = True
+                    self.times_transmitted_food += 1
+                elif not near_pred or not near_food or signal_id==2:
+                    self.transmitted_poorly = True
+                    self.times_transmitted_false += 1
+        else:
+            if self.IsTransmitting():
+                self.SetSignalValue(0.0)
                 self.StopTransmitting()
 
-        if value:
-            #print("yes")
-            self.SetSignalValue(3.0)
-            self.StartTransmitting()
-        else:
-            #print("stop")
-            self.SetSignalValue(0.0)
-            self.StopTransmitting()
     
     def Reset(self):
-        self.times_transmitted = 0.0
-        self.times_caught = 0.0
-        self.foodBonus = 0.0
+        self.times_transmitted_pred = 0
+        self.times_transmitted_food = 0
+        self.times_transmitted_false = 0
+        self.times_caught = 0
+        self.transmitted_food_correctly = False
+        self.transmitted_pred_correctly = False
+        self.transmitted_poorly = False
         self.foodFound = False
         if self.IsTransmitting():
             self.StopTransmitting()
@@ -210,11 +300,12 @@ class EvoBat(EvoFFNAnimat):
 
             # Start transmitting if not already
             if not self.IsTransmitting():
+                pass
                 
                 # Increment the transmission count for fitness
-                self.times_transmitted += 1
-                self.SetSignalValue(1.0)
-                self.StartTransmitting()
+                #self.times_transmitted += 1
+                #self.SetSignalValue(1.0)
+                #self.StartTransmitting()
         
         if isinstance(other, Predator):
             self.times_caught += 1
@@ -224,12 +315,24 @@ class EvoBat(EvoFFNAnimat):
 
         # Temporary fitness to judge how many times bats have transmitted
         individual_fitness = 5.0 if self.foodFound else 0.0
-
         food_factor = self.foodBonus
-
-        total_fitness = (food_factor + individual_fitness)/(self.times_caught+1)
         
-        return max(1.0, total_fitness)
+        n_tx = self.times_transmitted_pred + self.times_transmitted_food + self.times_transmitted_false
+
+        R_correct = 0.01 * (self.times_transmitted_pred + self.times_transmitted_food)
+
+        P_wrong = -0.1 * self.times_transmitted_false
+
+        c_tx = -0.01 * (n_tx)
+
+        total_fitness = (food_factor + individual_fitness + R_correct+P_wrong+c_tx)/(self.times_caught+1)
+
+        return max(1.0, total_fitness) if self.transmitted_food_correctly or self.transmitted_pred_correctly else 1.0
+        # return (max(1.0, (3*self.times_transmitted_pred + 1*self.times_transmitted_food -
+        #         0.3*self.times_transmitted_false - 15*self.times_caught)))
+    
+        #return self.times_transmitted/(self.times_caught+1) if self.times_caught > 0 else 1
+
 
 class BatBaseSimulation(Simulation):
     """
@@ -245,15 +348,15 @@ class BatBaseSimulation(Simulation):
         self.SetAssessments(1)
         self.SetTimeSteps(500)
 
-        self.theGA = GeneticAlgorithm(0.25,0.1, selection = GASelectionType.GA_ROULETTE)
+        self.theGA = GeneticAlgorithm( 0.40,0.25, selection = GASelectionType.GA_ROULETTE)
         self.theGA.SetSelection(GASelectionType.GA_ROULETTE)
 
-        self.gaPred = GeneticAlgorithm(0.35, 0.1, selection = GASelectionType.GA_ROULETTE)
+        self.gaPred = GeneticAlgorithm(0.40, 0.25, selection = GASelectionType.GA_ROULETTE)
         self.gaPred.SetSelection(GASelectionType.GA_ROULETTE)
 
-        thePreds = Population(8, Predator, self.gaPred)        
-        theBats =  Population(30, EvoBat, self.theGA)
-        theTarget = Group(5, TargetObject)
+        thePreds = Population(6, Predator, self.gaPred)        
+        theBats =  Population(18, EvoBat, self.theGA)
+        theTarget = Group(4, TargetObject)
 
         self.Add("theBats", theBats)
         self.Add("theTarget", theTarget)
@@ -281,7 +384,7 @@ class BatBaseSimulation(Simulation):
         )
 
         # save the generation, max and average fitness to a log.csv file
-        with open("other/log_pred.csv", "a") as f:
+        with open("other/log_pred_f.csv", "a") as f:
             f.write(f"{self.generation+1},{avg_fitness_prey},{max_fitness_prey},{avg_fitness_pred},{max_fitness_pred}\n")
 
     def CreateDataStructSimulation(self):
