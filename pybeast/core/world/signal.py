@@ -24,14 +24,7 @@ class Signal:
 
     def __init__(
         self,
-        Visible: bool = True,
-        r: float = 0.2,
-        g: float = 0.8,
-        b: float = 1.0,
-        a: float = 0.3,
     ):
-        self.colour = [r, g, b, a]
-        self.visible = Visible
 
         # Signal state
         self.active = False
@@ -42,20 +35,19 @@ class Signal:
 
         self.vocab_size = 1
 
-    def normalize_value(self, value, vocab_size):
+    def normalise_value(self, value, vocab_size):
         """
-        Normalize a value from range [1, vocab_size] to [0, 1]
+        Normalises a value from range [1, vocab_size] to [0, 1]
         """
         if vocab_size <= 1:
             return 0.0
 
         return (value - 1) / (vocab_size - 1)
 
-    def get_color_for_value(self, value):
+    def get_colour_for_value(self, value):
         """
-        Generate a color based on signal value in the range [-1, 1].
         Uses a continuous colormap that transitions through:
-        Red > Orange > Yellow > Green > Cyan > Blue > Purple
+        Red > Orange > Yellow > Green > Cyan > Blue
 
         If vocab_size is 1, always returns red color.
         """
@@ -109,8 +101,8 @@ class Signal:
 
         # Determine color and alpha based on state and value
         if self.active:
-            # Use color based on normalized signal value
-            displayColor = self.get_color_for_value(self.value)
+            # Use color based on normalised signal value
+            displayColor = self.get_colour_for_value(self.value)
         else:
             # Transparent when inactive
             displayColor = [0.0, 0.0, 0.0, 0.0]
@@ -143,8 +135,8 @@ class Signal:
         self.strength = strength
         self.vocab_size = vocab_size
 
-        normalized_value = self.normalize_value(value, self.vocab_size)
-        self.value = normalized_value
+        normalised_value = self.normalise_value(value, self.vocab_size)
+        self.value = normalised_value
         self.activationTime = time.time()
 
     def Deactivate(self):
@@ -160,17 +152,11 @@ class Signal:
         if location:
             self.location = location
         if value:
-            normalized_value = self.normalize_value(value, self.vocab_size)
-            self.value = normalized_value
+            normalised_value = self.normalise_value(value, self.vocab_size)
+            self.value = normalised_value
 
     def IsActive(self) -> bool:
         """
         Return whether the signal is currently active.
         """
         return self.active
-
-    def SetColour(self, r: float, g: float, b: float, a: float = 0.3):
-        """
-        Set the signal color.
-        """
-        self.colour = [r, g, b, a]

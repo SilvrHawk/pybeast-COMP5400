@@ -514,12 +514,6 @@ class SignalSensor(Sensor):
         self.absolute_signals = temp
     
     def Interact(self, other):
-        """
-        Override the base Interact method - signal sensors don't use the standard
-        matching/evaluation functions as they process signals differently.
-        """
-        # Signal sensors don't use the interact method for processing signals
-        # They get signals directly through the animat's received_signals
         pass
     
     def Update(self):
@@ -569,5 +563,4 @@ class SignalSensor(Sensor):
         return self.absolute_signals
     
     def Display(self):
-        """Optionally display the sensor (can be empty)."""
         pass
